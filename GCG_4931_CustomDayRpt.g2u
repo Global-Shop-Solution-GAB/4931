@@ -1,0 +1,114 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create
+Gui.Form..Caption("Custom Day")
+Gui.Form..Size(4200,2745)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.lbl1.Create(Label,"Starting Date",True,1425,255,0,270,300,True,0,"Arial",8,-2147483633,0)
+Gui.Form.dtpStart.Create(DatePicker)
+Gui.Form.dtpStart.Size(1470,285)
+Gui.Form.dtpStart.Position(270,540)
+Gui.Form.lbl2.Create(Label,"Ending Date",True,1935,255,0,2160,300,True,0,"Arial",8,-2147483633,0)
+Gui.Form.dtpEnd.Create(DatePicker)
+Gui.Form.dtpEnd.Size(1470,285)
+Gui.Form.dtpEnd.Position(2160,540)
+Gui.Form.cmdPrint.Create(Button)
+Gui.Form.cmdPrint.Size(855,375)
+Gui.Form.cmdPrint.Position(270,1440)
+Gui.Form.cmdPrint.Caption("Print")
+Gui.Form.cmdPrint.DefaultValue("")
+Gui.Form.cmdPrint.Event(Click,cmdPrint_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Created for Sicom by SKC on 3/16/2018
+'Grab a date range and collect Job data.
+F.Intrinsic.Control.Try
+V.Local.sError.Declare
+F.ODBC.Connection!con.OpenCompanyConnection()
+Gui.Form..Show
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.cmdPrint_Click.Start
+'Take start and end date to gather job data.
+F.Intrinsic.Control.Try
+V.Local.sError.Declare
+v.Local.sSql.Declare
+v.Local.sColumns.Declare
+v.Local.dStart.Declare
+v.Local.dEnd.Declare
+v.Local.iBiRun.Declare
+V.Local.iID.Declare
+V.Local.iBiLogID.Declare
+Gui.Form..Visible(False)
+F.Global.BI.GetRunID(v.Local.iBiRun)
+F.Global.BI.GetIDFromName("GCG_4931_CustomDay.rpt",V.Local.iID)
+F.Global.BI.StartLogging(V.Local.iBiRun,V.Local.iID,-1,"GCG_4931_CustomDay.rpt",V.Local.iBiLogID)
+v.Local.dStart.Set(v.Screen.Form!dtpStart.Value)
+v.Local.dEnd.Set(v.Screen.Form!dtpEnd.Value)
+'clear out table
+F.ODBC.Connection!con.Execute("Delete From GCG_4931_CustomDay")
+F.Intrinsic.String.Build("Select A.Job, A.Suffix, A.Part, A.Description, A.Date_Opened, B.Seq from V_Job_Header A Left Join Job_Detail B on A.Job=B.Job and A.Suffix = B.Suffix where A.Date_Opened between '{0}' and '{1}' and B.LMO = 'M'", v.Local.dStart.PervasiveDate, v.Local.dEnd.PervasiveDate, v.Local.sSql)
+F.Data.DataTable.CreateFromSQL("dtJob", "con", v.Local.sSql)
+F.Intrinsic.String.Build("Select C.Job, C.Suffix, C.Purchase_Order, D.Date_Order From v_PO_Lines C Left Join V_PO_HEader D on C.Purchase_Order = D.Purchase_Order Where C.Job <> '' and Date_Order >= '{0}'", v.Local.dStart.PervasiveDate, v.Local.sSql)
+F.Data.DataTable.CreateFromSQL("dtPO", "con", v.Local.sSql)
+'Join the two tables together to form the data for the report
+V.Local.sColumns.Set("A.Job*!*A.Suffix*!*A.Part*!*A.Description*!*A.Date_Opened*!*B.Purchase_Order*!*B.Date_Order")
+F.Data.Linq.Join("LeftJoin", "DataTable", "dtJob*!*A", "DataTable", "dtPO*!*B", "A.Job=B.Job And A.Suffix=B.Suffix",v.Local.sColumns, "B.Purchase_Order <> ''", "", "", "dtReport", True)
+F.Intrinsic.Control.If(v.DataTable.dtReport.Exists, =, False)
+	'Let the user know there are no records and exits
+	F.Intrinsic.UI.Msgbox("There are no records for this timeframe.", "No Data")
+	F.Intrinsic.Control.CallSub(Form_Unload)
+F.Intrinsic.Control.EndIf
+F.Data.DataTable.AddColumn("dtReport", "BiRun", "Long")
+F.Data.DataTable.SetValue("dtReport",-1,"BiRun", v.Local.iBiRun)
+F.Data.DataTable.AddColumn("dtReport", "StartDate", Date)
+F.Data.DataTable.AddColumn("dtReport", "EndDate", Date)
+F.Data.DataTable.SetValue("dtReport",-1,"StartDate", v.Local.dStart)
+F.Data.DataTable.SetValue("dtReport",-1,"EndDate", v.Local.dEnd)
+'Save the date to the Custom Table.
+F.Data.DataTable.SaveToDB("dtReport", "con", "GCG_4931_CustomDay", "BiRun", 128)
+F.Intrinsic.Control.CallSub(PrintReport, "BiRunID", v.Local.iBiRun, "BiLogID", v.Local.iBiLogID)
+F.Intrinsic.Control.CallSub(Form_Unload)
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.cmdPrint_Click.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare
+F.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.PrintReport.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare
+F.Global.BI.StopLogging(V.Args.BILogID)
+F.Global.BI.RunReportPreProcessor(V.Args.BIRunID,V.Args.BILogID,"BiRunID",V.Args.BIRunID,"GCG_4931_CustomDay.rpt",-1,True,"",-1,"",-1,"","",V.Args.BIRunID)
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+'	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_Unload)
+F.Intrinsic.Control.EndTry
+Program.Sub.PrintReport.End
